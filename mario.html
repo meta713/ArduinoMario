@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width initial-scale=1.0">
+<script
+  src="https://code.jquery.com/jquery-3.2.1.min.js"
+  integrity="sha256-hwg4gsxgFZhOsEEamdOYGBf13FyQuiTwlAQgxVSNgt4="
+  crossorigin="anonymous">
+</script>
+<style>
+body {
+  margin: 0;
+}
+
+.gameBox {
+  position: relative;
+  margin-left: 33.3%;
+  margin-top: 22%;
+}
+
+.blocks {
+  margin-top: -5px;
+}
+
+.blocks > img {
+  width: 37px;
+  height: 37px;
+}
+
+.button_area {
+/* 特になし */
+}
+
+#mario {
+  width: 37px;
+  height: 40px;
+}
+
+#kinoko {
+  position: absolute;
+  /* 343pxは床の幅 ( 37px * 10個 ) - 27px(キノコの幅) = 343px となっています */
+  /*left: 343px;*/
+  /*top: 13px;*/
+  width: 27px;
+  height: 27px;
+}
+</style>
+</head>
+<body>
+  <div class="gameBox">
+    <img id="mario" src="img/mario.png"><img id="kinoko" src="img/kinoko.png">
+    <div class="blocks"></div>
+    <div class="button_area"><button id="restartBtn" disabled=''>Restart!</button></div>
+  </div>
+</body>
+<script>
+
+//restartFlag = false; リスタートボタンの管理用のフラグ
+
+$(function(){
+
+  //床ブロックの画像のパス, エラーの際のゲームオーバーの画像パス
+  const img_blockPath = 'img/block.gif', img_gameoverPath = 'img/gameover.png';
+
+  const blocksCount = 11;
+  if(blocksCount <= 0) return; //一応
+  //blocksCount個の床ブロックを.blocks要素に追加 （書くのがめんどくさいので...
+  let fragment = document.createDocumentFragment();
+  let $blocks = $('.blocks');
+  for (let i = 0 ; i < blocksCount ; i++) {
+    let elem = document.createElement('img');
+    elem.src = img_blockPath;
+    fragment.appendChild(elem);
+  }
+  $blocks[0].appendChild(fragment);
+
+  //#kinoko要素を初期位置に移動
+  let $kinoko = $('#kinoko');
+  $kinoko.css('left', $blocks.find('img:first').width() * blocksCount - $kinoko.width());
+  $kinoko.css('top', $('#mario').height() - $kinoko.height());
+
+
+
+  // WebSocketのhostとの接続先, socketの作成
+  const host = 'ws://localhost:3333', socket = new WebSocket(host);
+  if(socket){
+    //hostと接続した際に呼び出される処理
+    socket.onopen = () => {
+      console.log('Connected!!');
+
+      //リスタートボタンにクリックイベントを付与
+      $('#restartBtn').click(function(){
+        $('#kinoko').show();
+        $(this).attr('disabled', '');
+        mario_run(socket);
+      });
+
+      mario_run(socket);
+    };
+
+    //hostからメッセージを取得した際に呼び出されるの処理
+    socket.onmessage = (message) => {
+      console.log(message);
+    };
+
+    //hostとの接続が切断された際に呼び出される処理
+    socket.onclose = () => {
+      $('#mario').attr('src', img_gameoverPath);
+      $('#restartBtn').attr('disabled', '');
+      alert('Connection closed.');
+    };
+  }else{
+    //hostとの接続が確立できなかった際の処理 -> 基本的には接続できなくてもsocketに関する情報は定数内部に入っているのでここは呼ばれることはない（はず）
+    $('#mario').attr('src', img_gameoverPath);
+    alert('Socket Error...');
+  }
+});
+
+
+
+const mario_run = (socket) => {
+  setTimeout(() => {
+    //事前に要素を取得
+    let $mario = $('#mario'), $kinoko = $('#kinoko');
+    const imgs = ['img/marioRun_1.png', 'img/marioRun_2.png'], defaultImg = $mario.attr('src'), defaultPoint = $kinoko.position().left;
+    let imgIndex = 0, count = defaultPoint;
+
+    let IntervalId = setInterval(() =>{
+      // 0 1 の反転
+      imgIndex = 1 - imgIndex;
+      // 7(px)ずつ減少させる
+      count -= 7;
+
+      $mario.attr('src', imgs[imgIndex]);
+      $kinoko.css('left', count);
+
+      //キノコの位置が左から37pxになると処理をする->マリオと接触判定
+      if(count <= 37){
+        //キノコを初期位置に戻す
+        $kinoko.hide().css('left', defaultPoint);
+        //マリオのimgを初期に戻す
+        $mario.attr('src', defaultImg);
+        clearInterval(IntervalId);
+        //hostにキノコ取得を通知する
+        socket.send('1UP');
+
+        $('#restartBtn').removeAttr('disabled');
+      }
+    }, 50);
+  }, 1000);
+};
+</script>
+</html>
